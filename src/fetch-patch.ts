@@ -30,7 +30,10 @@ import {
   SESSION_AFFINITY_HEADER,
   SESSION_HEADER,
 } from "./session.ts";
-import { maybeInjectCoreTools } from "./tool-fallback.ts";
+import {
+  maybeForceStreaming,
+  maybeInjectCoreTools,
+} from "./tool-fallback.ts";
 import type { ActiveTurnState } from "./turn-store.ts";
 
 /**
@@ -321,12 +324,19 @@ export const patchFetch = (
 
     const newInit: RequestInit = { ...init, headers };
 
-    // 4. Core tool schema fallback for free-tier /responses models
+    // 4. Free-tier body requirements: the core-tool schemas and `stream: true`.
+    // Both are gates the free tier applies to the inference body itself, and
+    // both refuse with the same 403 body as every other failure, so neither
+    // can be diagnosed from the outside.
     if (init?.body !== undefined) {
-      const newBody = maybeInjectCoreTools(url, init.body, headers, {
+      const options = {
         enabled: config.injectCoreTools,
         modelMarker: config.freeModelMarker,
-      });
+      };
+      const withTools = maybeInjectCoreTools(url, init.body, headers, options);
+      // Streaming is folded into the same pass so `content-length` is set once
+      // against the final body rather than twice against two intermediates.
+      const newBody = maybeForceStreaming(url, withTools, headers, options);
       if (newBody !== init.body) {
         newInit.body = newBody;
       }

@@ -6,6 +6,17 @@ This project is an evolution of [**`nobu121/dsh-opencode-session`**](https://git
 
 ---
 
+## Unreleased
+
+### Bug Fixes
+
+* **free-tier:** the `ses_` id encoded the timestamp without the vendor's bit-inversion and drew the counter from a full byte rather than the accepted 1..63 band, so a correctly-shaped free-tier request was refused with a body identical to every other refusal
+* **free-tier:** `stream` was never set on a free-tier inference body, and the gateway refuses the request without it regardless of User-Agent or client header
+* **free-tier:** the `read`/`bash` schema fallback ran only on `/responses`, leaving models that cannot be reached there — `space-bunny-free` answers `ModelProtocolUnsupported` — to go out with no schemas at all
+
+See [docs/free-tier-gates.md](./docs/free-tier-gates.md) for the measurements and
+for why the three scopes must not be narrowed back.
+
 ## [1.1.1](https://github.com/viztor/dsh-opencode-patch/compare/v1.1.0...v1.1.1) (2026-10-09)
 
 

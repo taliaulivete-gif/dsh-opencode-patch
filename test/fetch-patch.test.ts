@@ -655,7 +655,14 @@ describe("patchFetch", () => {
       "https://opencode.ai/zen/v1/chat/completions",
       JSON.stringify({ input: "hi", model: "muse-spark-1.3-contributor-free" })
     );
-    expect(toolNamesOf(parseJsonBody(chat))).toBeUndefined();
+    // The chat path is an inference path too. The gateway refuses a free-tier body
+    // there without the same two schemas, and a model that cannot be reached on
+    // `/responses` at all has nowhere else to get them. The chat path gets the
+    // OpenAI-shaped schemas, whose names sit under `function`.
+    const chatTools = (
+      parseJsonBody(chat) as { tools?: { function?: { name?: string } }[] }
+    ).tools?.map((tool) => tool.function?.name);
+    expect(chatTools).toEqual(["read", "bash"]);
 
     const invalid = await run(
       "https://opencode.ai/zen/v1/responses",

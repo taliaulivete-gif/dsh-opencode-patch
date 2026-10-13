@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readSessionMetaResolver } from "../src/cordis-context.ts";
 import {
   SESSION_HEADER,
+  hasPlausibleCounter,
   hasSessionHeader,
   headerValueFor,
   isOpenCodeSessionId,
@@ -216,11 +217,17 @@ describe("withStore", () => {
  * made `BigInt("0x" + hex)` throw for every consumer of that function.
  */
 describe("session id · parity with the vendor's own reader", () => {
-  /** The vendor's `timestamp()`: slice twelve characters, hex, divide by 0x1000. */
+  /** The vendor's `timestamp()`: slice twelve characters, hex, invert, shift out the counter. */
   const vendorTimestamp = (id: string): number => {
     const prefix = id.split("_")[0] ?? "";
     const hex = id.slice(prefix.length + 1, prefix.length + 13);
-    return Number(BigInt(`0x${hex}`) / 0x1000n);
+    // `time.ts` complements the six bytes on the way IN, so the reader
+    // complements them back on the way OUT. Skipping that models a reader that
+    // does not exist: it decodes the raw value and so endorses any id encoded
+    // without the inversion, including the ids the gateway refuses with a 403
+    // whose body is byte-identical to every other refusal.
+    const stored = BigInt.asUintN(48, -BigInt(`0x${hex}`) - 1n);
+    return Number(stored / 0x1000n);
   };
 
   it("embeds the creation time exactly where their reader looks for it", () => {
@@ -259,6 +266,56 @@ describe("session id · parity with the vendor's own reader", () => {
     const id = openCodeSessionIdFor("no-created-at");
     expect(id).toMatch(SESSION_RE);
     expect(() => vendorTimestamp(id)).not.toThrow();
+  });
+
+  /**
+   * The counter band.
+   *
+   * This is the assertion that would have caught the real fault. The gateway
+   * decides free-tier eligibility on the counter decoded out of the id's low
+   * twelve bits, and refuses an out-of-band id with a 403 body byte-identical
+   * to every other refusal. So a session header can be present, correctly
+   * spelled, stable and still worthless, and the only symptom is that free
+   * models answer 403 while a hand-rolled id works.
+   *
+   * Measured 2026-10-13, single variable changed: an in-band id is served, the
+   * same request carrying a random hex id is refused.
+   */
+  describe("counter band", () => {
+    it("mints an in-band counter for every conversation, with and without a creation time", () => {
+      // Wide enough to have caught a counter drawn from a full byte: a 0..255
+      // draw lands out of band roughly three times in four.
+      for (let index = 0; index < 500; index += 1) {
+        const session = `conversation-${index}`;
+        expect(hasPlausibleCounter(openCodeSessionIdFor(session))).toBe(true);
+        expect(
+          hasPlausibleCounter(
+            openCodeSessionIdFor(session, 1_700_000_000_000 + index)
+          )
+        ).toBe(true);
+      }
+    });
+
+    it("lands the inverted low twelve bits on the band the gateway reads", () => {
+      const id = openCodeSessionIdFor("band", 1_700_000_000_000);
+      const low = Number.parseInt(id.slice(13, 16), 16);
+      // `~` maps counter `c` onto `0xFFF - c`, so the accepted 1..63 band
+      // surfaces as 0xFC0 (c=63) through 0xFFE (c=1).
+      expect(low).toBeGreaterThanOrEqual(0xfc0);
+      expect(low).toBeLessThanOrEqual(0xffe);
+    });
+
+    it("rejects a random hex id, which is the shape that fails silently", () => {
+      // Well-formed, right length, right alphabet — and not servable.
+      expect(hasPlausibleCounter("ses_5de271cd159cs4H5UaPdYcKnRB")).toBe(false);
+    });
+
+    it("keeps the id stable for a conversation while the counter stays in band", () => {
+      const first = openCodeSessionIdFor("stable-band", 1_700_000_000_000);
+      const second = openCodeSessionIdFor("stable-band", 1_700_000_000_000);
+      expect(first).toBe(second);
+      expect(hasPlausibleCounter(first)).toBe(true);
+    });
   });
 });
 
@@ -302,7 +359,10 @@ describe("session id · the session's own creation time", () => {
     const createdAt = 1_700_000_000_000;
     const id = headerValueFor("s1", createdAt) ?? "";
     const hex = id.slice(4, 16);
-    expect(Number(BigInt(`0x${hex}`) / 0x1000n)).toBe(createdAt % 2 ** 36);
+    // The stored field is complemented, so the reader complements it back before
+    // shifting the counter out — see `vendorTimestamp` above.
+    const stored = BigInt.asUintN(48, -BigInt(`0x${hex}`) - 1n);
+    expect(Number(stored / 0x1000n)).toBe(createdAt % 2 ** 36);
   });
 });
 

@@ -148,6 +148,83 @@ export const isCoreToolModel = (modelId: string, marker: string): boolean => {
 };
 
 /**
+ * Path segments that mark an inference body worth inspecting for `stream`.
+ *
+ * Wider than {@link RESPONSES_PATH}: the streaming requirement is a property of
+ * the free tier's inference gate, not of one API shape. `/chat/completions` and
+ * `/messages` are refused identically when `stream` is absent.
+ */
+const INFERENCE_PATHS = ["/responses", "/chat/completions", "/messages"];
+
+/**
+ * Force `stream: true` on a free-tier inference body.
+ *
+ * Measured 2026-10-13: with an in-band session id, a non-empty `tools` array and
+ * every identity header present, a request carrying `stream: true` is served
+ * and the same request with `stream` absent or false is refused with
+ * `403 FreeTierError` — the same refusal body as every other gate, so it reads
+ * as "the headers did not work" rather than "one field was wrong".
+ *
+ * Seven header combinations (full CLI User-Agent vs bare `opencode/1.19.0`,
+ * `x-opencode-client: cli` vs `desktop`) were all served with `stream: true` and
+ * all refused without it, so this is the discriminating variable, not the
+ * User-Agent.
+ *
+ * Scoped exactly like the core-tool fallback: free-tier models only, and a body
+ * that already says `stream: true` passes through byte-identical.
+ *
+ * @param url - request URL.
+ * @param body - the outgoing request body.
+ * @param headers - mutable header bag whose `content-length` must track a rewrite.
+ * @param options - whether injection is enabled and which model marker scopes it.
+ * @returns the (possibly rewritten) body; the original reference when untouched.
+ */
+export const maybeForceStreaming = (
+  url: string,
+  body: RequestInit["body"],
+  headers: Headers,
+  options: { enabled: boolean; modelMarker: string }
+): RequestInit["body"] => {
+  if (!options.enabled) {
+    return body;
+  }
+  if (!INFERENCE_PATHS.some((path) => url.includes(path))) {
+    return body;
+  }
+  let bodyStr: string | undefined;
+  if (typeof body === "string") {
+    bodyStr = body;
+  } else if (Buffer.isBuffer(body)) {
+    bodyStr = body.toString("utf-8");
+  } else {
+    return body;
+  }
+  if (bodyStr.length === 0) {
+    return body;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyStr);
+  } catch {
+    return body;
+  }
+  if (!isRecord(parsed)) {
+    return body;
+  }
+  const modelProp: unknown = parsed.model;
+  if (typeof modelProp !== "string" || !isCoreToolModel(modelProp, options.modelMarker)) {
+    return body;
+  }
+  if (parsed.stream === true) {
+    return body;
+  }
+  parsed.stream = true;
+  const newBodyStr = JSON.stringify(parsed);
+  headers.set("content-length", Buffer.byteLength(newBodyStr).toString());
+  return newBodyStr;
+};
+
+/**
  * Inject `read` + `bash` schemas into a free-tier completions body.
  *
  * @param url - request URL (supports `/responses` and `/chat/completions`).
@@ -166,7 +243,14 @@ export const maybeInjectCoreTools = (
   if (!options.enabled) {
     return body;
   }
-  if (!url.includes(RESPONSES_PATH)) {
+  // Measured 2026-10-13: the core-tool requirement is not specific to
+  // `/responses`. On `/chat/completions` the gateway refuses a free-tier body
+  // that lacks `read` and `bash` exactly as it does on `/responses` — and a
+  // model like `space-bunny-free` rejects `/responses` outright with
+  // `ModelProtocolUnsupported`, so the chat path is the ONLY path it can be
+  // reached on. Scoping this to `/responses` left those models with no schemas
+  // at all, which is the same silent 403 as having the wrong session id.
+  if (!INFERENCE_PATHS.some((path) => url.includes(path))) {
     return body;
   }
   if (body === undefined || body === null) {

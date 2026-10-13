@@ -27,6 +27,7 @@ import {
   DUMMY_READ_TOOL_FUNCTION,
   RESPONSES_PATH,
   isCoreToolModel,
+  maybeForceStreaming,
   maybeInjectCoreTools,
 } from "../src/tool-fallback.ts";
 import { parseJsonBody, toolNamesOf } from "./test-helpers.ts";
@@ -106,20 +107,45 @@ describe("maybeInjectCoreTools: bodies it must not rewrite", () => {
     expect(headers.get("content-length")).toBeNull();
   });
 
-  it("returns the body untouched off the /responses path", () => {
+  it("returns the body untouched off every inference path", () => {
     const body = JSON.stringify({ input: "hi", model: FREE_MODEL });
 
-    // The gateway only rejects `/responses`. A completions body that already
-    // declares every tool the model needs must not gain two more the caller
-    // never offered, so the path check has to come before any parsing.
-    for (const url of [
+    // A listing carries no `tools` and has no reason to grow two, so the path
+    // check must come before any parsing. `/chat/completions` is NOT in this
+    // set any more — see the next case.
+    const headers = new Headers();
+    expect(
+      maybeInjectCoreTools("https://opencode.ai/zen/v1/models", body, headers, options())
+    ).toBe(body);
+    expect(headers.get("content-length")).toBeNull();
+  });
+
+  it("injects on the chat path, because the gate is not responses-specific", () => {
+    // Measured 2026-10-13: `/chat/completions` refuses a free-tier body that
+    // lacks `read` and `bash` exactly as `/responses` does — no `tools` key, an
+    // empty array, `bash` alone and `read` alone were all refused, and only the
+    // pair was served. And `space-bunny-free` answers `/responses` with
+    // `ModelProtocolUnsupported`, so the chat path is the only path such a model
+    // can be reached on. Scoping this to `/responses` therefore left those
+    // models with no schemas at all, which looks from the outside exactly like
+    // a header that does not matter.
+    const headers = new Headers();
+    const out = maybeInjectCoreTools(
       "https://opencode.ai/zen/v1/chat/completions",
-      "https://opencode.ai/zen/v1/models",
-    ]) {
-      const headers = new Headers();
-      expect(maybeInjectCoreTools(url, body, headers, options())).toBe(body);
-      expect(headers.get("content-length")).toBeNull();
-    }
+      JSON.stringify({ messages: [], model: FREE_MODEL }),
+      headers,
+      options()
+    );
+    // The chat path injects the OpenAI-shaped schemas, which carry their name
+// under `function` rather than at the top level — so read the shape the
+// gateway actually receives rather than going through `toolNamesOf`.
+const parsed = parseJsonBody(out) as {
+      tools?: { function?: { name?: string } }[];
+    };
+    expect(parsed.tools?.map((tool) => tool.function?.name)).toEqual([
+      "read",
+      "bash",
+    ]);
   });
 
   it("returns an absent body as it found it", () => {
@@ -506,5 +532,121 @@ describe("maybeInjectCoreTools: marker scoping", () => {
         options("preview")
       )
     ).toBe(miss);
+  });
+});
+
+/**
+ * `maybeForceStreaming` — the free tier's `stream: true` requirement.
+ *
+ * Measured 2026-10-13: with an in-band session id, a non-empty `tools` array
+ * and every identity header present, `stream: true` is served and the same
+ * request without it is refused with `403 FreeTierError` — byte-identical to
+ * every other free-tier refusal, which is why this reads from the outside as
+ * "the headers did not work" rather than "one field was wrong".
+ *
+ * As with the tool fallback, most of these cases assert that the body is left
+ * ALONE. The sole caller swaps the body whenever the returned reference
+ * differs, so a rewrite that fires by accident is invisible until a turn
+ * silently changes shape.
+ */
+describe("tool-fallback: the free tier's stream requirement", () => {
+  const url = "https://opencode.ai/zen/v1/chat/completions";
+  const sent = (model: string, extra: Record<string, unknown> = {}) =>
+    JSON.stringify({ messages: [], model, ...extra });
+
+  it("sets stream on a free-tier body that omits it", () => {
+    const headers = new Headers();
+    const out = maybeForceStreaming(url, sent("mimo-v2.6-flash-free"), headers, {
+      enabled: true,
+      modelMarker: DEFAULT_FREE_MODEL_MARKER,
+    });
+    expect((JSON.parse(out as string) as { stream?: boolean }).stream).toBe(true);
+  });
+
+  it("sets stream when the caller explicitly sent false", () => {
+    const headers = new Headers();
+    const out = maybeForceStreaming(
+      url,
+      sent("space-bunny-free", { stream: false }),
+      headers,
+      { enabled: true, modelMarker: DEFAULT_FREE_MODEL_MARKER }
+    );
+    expect((JSON.parse(out as string) as { stream?: boolean }).stream).toBe(true);
+  });
+
+  it("leaves a body that already streams byte-identical", () => {
+    const body = sent("space-bunny-free", { stream: true });
+    expect(
+      maybeForceStreaming(url, body, new Headers(), {
+        enabled: true,
+        modelMarker: DEFAULT_FREE_MODEL_MARKER,
+      })
+    ).toBe(body);
+  });
+
+  it("covers chat/completions and messages as well as responses", () => {
+    // The gate is a property of the free tier, not of one API shape: all three
+    // paths were refused identically before this rewrite existed.
+    for (const path of ["/responses", "/chat/completions", "/messages"]) {
+      const out = maybeForceStreaming(
+        `https://opencode.ai/zen/v1${path}`,
+        sent("cat-jam-free"),
+        new Headers(),
+        { enabled: true, modelMarker: DEFAULT_FREE_MODEL_MARKER }
+      );
+      expect((JSON.parse(out as string) as { stream?: boolean }).stream).toBe(
+        true
+      );
+    }
+  });
+
+  it("leaves a paid model's body alone", () => {
+    const body = sent("gpt-5.4");
+    expect(
+      maybeForceStreaming(url, body, new Headers(), {
+        enabled: true,
+        modelMarker: DEFAULT_FREE_MODEL_MARKER,
+      })
+    ).toBe(body);
+  });
+
+  it("leaves non-inference traffic and disabled injection alone", () => {
+    const body = sent("space-bunny-free");
+    expect(
+      maybeForceStreaming(
+        "https://opencode.ai/zen/v1/models",
+        body,
+        new Headers(),
+        { enabled: true, modelMarker: DEFAULT_FREE_MODEL_MARKER }
+      )
+    ).toBe(body);
+    expect(
+      maybeForceStreaming(url, body, new Headers(), {
+        enabled: false,
+        modelMarker: DEFAULT_FREE_MODEL_MARKER,
+      })
+    ).toBe(body);
+  });
+
+  it("leaves unparsable and non-body input alone", () => {
+    for (const bad of ["not json", "", undefined, null]) {
+      expect(
+        maybeForceStreaming(url, bad, new Headers(), {
+          enabled: true,
+          modelMarker: DEFAULT_FREE_MODEL_MARKER,
+        })
+      ).toBe(bad);
+    }
+  });
+
+  it("keeps content-length tracking the rewritten body", () => {
+    const headers = new Headers();
+    const out = maybeForceStreaming(url, sent("space-bunny-free"), headers, {
+      enabled: true,
+      modelMarker: DEFAULT_FREE_MODEL_MARKER,
+    });
+    expect(headers.get("content-length")).toBe(
+      Buffer.byteLength(out as string).toString()
+    );
   });
 });

@@ -47,6 +47,45 @@ const TIME_HEX_LENGTH = 12;
 const RANDOM_LENGTH = 14;
 
 /**
+ * The vendor keeps the time in six bytes, so the stored field is 48 bits wide
+ * and anything wider was truncated by their writer.
+ */
+const TIME_BITS = 48;
+
+/**
+ * Counter band the gateway accepts, 1..63 inclusive.
+ *
+ * The counter occupies the low twelve bits of the pre-inversion value, so after
+ * inversion the low twelve bits are `0xFFF - counter`. Measured 2026-10-13
+ * against `mimo-v2.6-flash-free`: a counter of 1 lands the id's hex on
+ * `...ffe` and the request is served; a counter drawn from a full byte (0..255)
+ * lands outside the band and is refused, with a 403 body byte-identical to
+ * every other refusal. That identity is why a header that is present,
+ * correctly spelled and correctly stable can still be worthless.
+ */
+const COUNTER_MAX = 63;
+
+/** Twelve bits, all ones: the value `~` yields before the counter is taken off. */
+const LOW_TWELVE_ALL_ONES = 4095;
+
+/**
+ * Complement `value` and keep only the vendor's 48-bit field.
+ *
+ * This is `~value & TIME_MASK`, written as arithmetic and `BigInt.asUintN`
+ * because the repo's lint bans the bitwise operators outright. Nothing is lost:
+ * `~x` is exactly `-x - 1`, and `asUintN` is a function rather than an operator.
+ *
+ * The inversion is not a detail. It is the whole difference between an id the
+ * gateway serves and one it refuses, so it stays written out in the code rather
+ * than folded into a mask someone might later "simplify" away.
+ *
+ * @param value - the pre-inversion field.
+ * @returns the complemented value, truncated to 48 bits.
+ */
+const inverted48 = (value: bigint): bigint =>
+  BigInt.asUintN(TIME_BITS, -value - 1n);
+
+/**
  * Derive a valid OpenCode session ID: `ses_` + 12 hex + 14 base62.
  *
  * The shape is read off the vendor's own generator rather than inferred
@@ -81,17 +120,21 @@ export const openCodeSessionIdFor = (
   sessionId: string | number,
   createdAt?: number
 ): string => {
-  const hash = createHash("sha256").update(String(sessionId)).digest();
+const hash = createHash("sha256").update(String(sessionId)).digest();
 
-  // The counter occupies the low twelve bits: all of `hash[0]` and the high
-  // nibble of `hash[1]`. Arithmetic, not bitwise — the lint forbids the
-  // operators, and the value only has to be stable, not well distributed.
-  const counter = (hash[0] ?? 0) * 16 + Math.floor((hash[1] ?? 0) / 16);
+  // Kept inside 1..63 so the inverted low twelve bits land in the band the
+  // gateway reads. Still hash-derived, so it stays stable per conversation.
+  const counter = ((hash[0] ?? 0) % COUNTER_MAX) + 1;
 
-  const time =
+  // With no creation time the timestamp is the one thing this function cannot
+  // supply honestly, so it stays hash-derived — which is safe precisely because
+  // the gate checks the counter band rather than the age of the timestamp.
+  const milliseconds =
     createdAt !== undefined && Number.isSafeInteger(createdAt) && createdAt >= 0
-      ? (BigInt(createdAt) * 4096n + BigInt(counter)) % 2n ** 48n
+      ? BigInt(createdAt)
       : BigInt(`0x${hash.subarray(0, 6).toString("hex")}`);
+
+  const time = inverted48(milliseconds * 4096n + BigInt(counter));
 
   let random = "";
   for (let i = 6; i < 20; i += 1) {
@@ -102,6 +145,18 @@ export const openCodeSessionIdFor = (
   }
 
   return `ses_${time.toString(16).padStart(TIME_HEX_LENGTH, "0")}${random.slice(0, RANDOM_LENGTH)}`;
+};
+
+/**
+ * Whether a `ses_…` value carries a counter the gateway will accept.
+ *
+ * @param id - a full session id, with or without the `ses_` prefix.
+ */
+export const hasPlausibleCounter = (id: string): boolean => {
+  const hex = id.startsWith("ses_") ? id.slice(4, 16) : id.slice(0, 12);
+  if (!/^[0-9a-f]{12}$/iu.test(hex)) return false;
+  return LOW_TWELVE_ALL_ONES - Number.parseInt(hex.slice(9, 12), 16) <=
+    COUNTER_MAX;
 };
 
 /**
