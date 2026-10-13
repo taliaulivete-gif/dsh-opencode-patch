@@ -372,15 +372,24 @@ describe("models-discovery: I1's second clause, for a model no catalog describes
     expect(isServableModel("gemini-3.1-pro", "opencode")).toBe(true);
   });
 
-  it("offers a free-tier model, which is a model a user may be running on", () => {
-    // A version of this briefly excluded free-tier ids on the strength of a
-    // measurement that turned out to be about the wrong credential: the account's
-    // session token is refused by the free tier, but an API key is not, and the
-    // session that prompted the change was itself running on a free-tier model.
-    // Excluding them removed models people were using.
+  it("does not offer a free-tier model, which cannot be served from here", () => {
+    // Measured with a VALID credential - the real key the opt-in reader extracts,
+    // not a malformed one - on the live gateway: space-bunny-free,
+    // step-5-preview-free and muse-spark-1.3-contributor-free each answer
+    // `403 FreeTierError` from outside OpenCode, while a paid model answers 200.
+    // space-bunny-free is refused too, despite being the id the gateway's own
+    // error message suggests, so the suggestion is not evidence that it works.
+    //
+    // This exclusion was once withdrawn for a bad reason: the measurement behind
+    // it had sent a JSON document where the key belongs. The conclusion was right
+    // and the evidence was wrong, and an earlier version of this test asserted
+    // the opposite because of it.
+    expect(isServableModel("space-bunny-free", "opencode")).toBe(false);
+    expect(isServableModel("step-5-preview-free", "opencode")).toBe(false);
     expect(isServableModel("muse-spark-1.3-contributor-free", "opencode")).toBe(
-      true
+      false
     );
-    expect(isServableModel("space-bunny-free", "opencode")).toBe(true);
+    // The paid models are untouched.
+    expect(isServableModel("deepseek-v4.1-flash", "opencode")).toBe(true);
   });
 });

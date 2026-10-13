@@ -124,6 +124,69 @@ describe("opencode-store: credentials", () => {
     expect(found?.[0]?.value).toBe("oc_sk_fixture_new");
   });
 
+  it("extracts the key from the JSON every real row carries", () => {
+    // Measured against a live installation: EVERY value is a JSON document, not a
+    // bare key. Returning the document puts JSON in the Bearer header, and the
+    // gateway answers `Invalid credential` - or, on the free tier, a refusal that
+    // reads as though the model were unusable. That is the wrong conclusion to
+    // draw, and this is the reader that caused it.
+    const path = database((db) => {
+      schema(db);
+      db.prepare(
+        "INSERT INTO credential (id, integration_id, label, value, active, time_updated) VALUES (?, ?, ?, ?, NULL, ?)"
+      ).run(
+        "a",
+        "opencode",
+        "Zen",
+        JSON.stringify({ type: "apiKey", key: "oc_sk_fixture_zen" }),
+        100
+      );
+    });
+    const found = readOpencodeCredentials(path);
+    expect(found).toHaveLength(1);
+    expect(found?.[0]?.value).toBe("oc_sk_fixture_zen");
+  });
+
+  it("carries an OAuth grant's access token rather than the whole grant", () => {
+    // `xai` is shaped differently - { type, methodID, refresh, access, expires } -
+    // so the reader claims only the two fields OpenCode itself declares.
+    const path = database((db) => {
+      schema(db);
+      db.prepare(
+        "INSERT INTO credential (id, integration_id, label, value, active, time_updated) VALUES (?, ?, ?, ?, NULL, ?)"
+      ).run(
+        "x",
+        "xai",
+        "xAI",
+        JSON.stringify({
+          type: "oauth",
+          methodID: "token",
+          refresh: "fixture-refresh",
+          access: "fixture-access",
+          expires: 1_700_000_000_000,
+        }),
+        100
+      );
+    });
+    expect(readOpencodeCredentials(path)?.[0]?.value).toBe("fixture-access");
+  });
+
+  it("drops a row whose value shape it does not claim", () => {
+    const path = database((db) => {
+      schema(db);
+      db.prepare(
+        "INSERT INTO credential (id, integration_id, label, value, active, time_updated) VALUES (?, ?, ?, ?, NULL, ?)"
+      ).run(
+        "u",
+        "mystery",
+        "?",
+        JSON.stringify({ type: "whatever", token: "nope" }),
+        100
+      );
+    });
+    expect(readOpencodeCredentials(path)).toBeUndefined();
+  });
+
   it("leaves an inactive credential behind", () => {
     // A retired key is one the user already replaced; offering it would resurrect
     // the thing they retired.

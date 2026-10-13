@@ -24,6 +24,8 @@
 
 import { DatabaseSync } from "node:sqlite";
 
+import { isRecord } from "./guards.ts";
+
 /** A credential as the installation stores it, minus everything unused. */
 export interface OpencodeCredential {
   /** The provider the credential is for, as `integration_id` carries it. */
@@ -50,6 +52,51 @@ export interface OpencodeAccount {
   /** The refresh token, when the installation stored one. */
   readonly refreshToken: string | undefined;
 }
+
+/**
+ * The bearer token a credential row actually carries.
+ *
+ * Measured against a real installation: EVERY row's `value` is a JSON document
+ * rather than a bare key, and the shape varies by integration. `cf-coding`,
+ * `google`, `nvidia`, `opencode` and the two Cloudflare ones carry
+ * `{ type, key, metadata? }`; the exception is `xai`, which carries
+ * `{ type, methodID, refresh, access, expires }` and is an OAuth grant.
+ *
+ * So the raw column is not a credential. Handing it to a Bearer header puts a JSON
+ * document where a key belongs, and the gateway answers `Invalid credential` or,
+ * on the free tier, a refusal that reads as though the model itself were unusable -
+ * which is exactly the wrong conclusion to draw from it. The whole document is also
+ * how a secret ends up in a log.
+ *
+ * @param value - the raw `value` column.
+ * @returns the key, the OAuth access token, or `undefined` for an unknown shape.
+ */
+const credentialToken = (value: string): string | undefined => {
+  if (!value.trimStart().startsWith("{")) {
+    // A bare key, which is what the JSON shapes wrap. Kept because a deployment may
+    // legitimately hold one.
+    return value;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed)) {
+    return undefined;
+  }
+  // Only the fields OpenCode itself declares: `key` for an API key, `access` for an
+  // OAuth grant. Anything else answers `undefined` rather than being guessed at,
+  // because a wrong token and no token are equally useless but only one is honest.
+  for (const field of ["key", "access"]) {
+    const candidate = parsed[field];
+    if (typeof candidate === "string" && candidate.length > 0) {
+      return candidate;
+    }
+  }
+  return undefined;
+};
 
 /** A text column, or `undefined` when the row holds something else. */
 const text = (value: unknown): string | undefined =>
@@ -114,11 +161,13 @@ export const readOpencodeCredentials = (
   }
   const credentials = found.flatMap((row) => {
     const integrationId = text(row.integrationId);
-    const value = text(row.value);
-    if (integrationId === undefined || value === undefined) {
+    const token = credentialToken(text(row.value) ?? "");
+    if (integrationId === undefined || token === undefined) {
       return [];
     }
-    return [{ integrationId, label: text(row.label) ?? integrationId, value }];
+    return [
+      { integrationId, label: text(row.label) ?? integrationId, value: token },
+    ];
   });
   return credentials.length === 0 ? undefined : credentials;
 };
