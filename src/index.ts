@@ -73,6 +73,7 @@ export {
 export {
   fallbackSessionId,
   isOpenCodeSessionId,
+  counterFor,
   hasPlausibleCounter,
   headerValueFor,
   openCodeSessionIdFor,

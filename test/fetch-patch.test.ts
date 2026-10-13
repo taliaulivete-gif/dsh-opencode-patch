@@ -17,6 +17,7 @@ import {
   SESSION_HEADER,
   clearCapturedApiKeys,
   getCapturedApiKey,
+  hasPlausibleCounter,
   recordCapturedApiKey,
   openCodeSessionIdFor,
   patchFetch,
@@ -317,7 +318,7 @@ describe("patchFetch", () => {
     );
 
     await als.run(
-      { provider: "opencode", value: "ses_origins_1" },
+      { provider: "opencode", value: openCodeSessionIdFor("origins-1") },
       async () => {
         await patched("https://opencode.ai/zen/v1/chat/completions", {
           method: "POST",
@@ -326,6 +327,30 @@ describe("patchFetch", () => {
     );
     expect(headerOf(capture.init, "x-opencode-client")).toBe("desktop");
     expect(headerOf(capture.init, "x-opencode-project")).toBe("global");
+  });
+
+  it("derives away a tracked-turn session whose counter is out of band", async () => {
+    // The measured fault, with the id that produced it. This one drew 54
+    // consecutive 403 free-tier refusals across every model and both body
+    // shapes, while in-band sessions answered 200 throughout the same run —
+    // and the 403 is byte-identical to a genuine quota refusal, so nothing but
+    // the decoded counter separates the two. It cannot be fixed by minting,
+    // because the value arrives already formed: the turn store was returned
+    // unchecked where the pinned-header path was checked.
+    const als = new AsyncLocalStorage<ActiveTurnState>();
+    const { capture, mockFetch } = createCaptureFetch();
+    const patched = patchFetch(mockFetch, als, resolveConfig());
+    const burned = "ses_f1cc0721cb24xmkRycy00D9lAJ";
+
+    await als.run({ provider: "opencode", value: burned }, async () => {
+      await patched("https://opencode.ai/zen/v1/chat/completions", {
+        method: "POST",
+      });
+    });
+
+    const sent = headerOf(capture.init, SESSION_HEADER) ?? "";
+    expect(sent).not.toBe(burned);
+    expect(hasPlausibleCounter(sent)).toBe(true);
   });
 
   it("dynamically resolves x-opencode-project from workspace when injectProject is on, and omits when off", async () => {
@@ -338,7 +363,7 @@ describe("patchFetch", () => {
       {
         project: "my-web-workspace",
         provider: "opencode",
-        value: "ses_dyn_proj",
+        value: openCodeSessionIdFor("dyn-proj"),
       },
       async () => {
         await patched1("https://opencode.ai/zen/v1/chat/completions", {
@@ -359,7 +384,7 @@ describe("patchFetch", () => {
       {
         project: "my-web-workspace",
         provider: "opencode",
-        value: "ses_dyn_proj",
+        value: openCodeSessionIdFor("dyn-proj"),
       },
       async () => {
         await patched2("https://opencode.ai/zen/v1/chat/completions", {
@@ -435,10 +460,10 @@ describe("patchFetch", () => {
     const config = resolveConfig({ providers: ["my-relay"] });
     const patched = patchFetch(mockFetch, als, config);
 
-    await als.run({ provider: "my-relay", value: "ses_relay_1" }, async () => {
+    await als.run({ provider: "my-relay", value: openCodeSessionIdFor("relay-1") }, async () => {
       await patched("https://relay.internal/v1/chat", { method: "POST" });
     });
-    expect(headerOf(capture.init, SESSION_HEADER)).toBe("ses_relay_1");
+    expect(headerOf(capture.init, SESSION_HEADER)).toBe(openCodeSessionIdFor("relay-1"));
 
     const { capture: capture2, mockFetch: mockFetch2 } = createCaptureFetch();
     const patched2 = patchFetch(mockFetch2, als, config);
@@ -527,7 +552,7 @@ describe("patchFetch", () => {
     const als = new AsyncLocalStorage<ActiveTurnState>();
 
     const { capture: kept, mockFetch: keptFetch } = createCaptureFetch();
-    await als.run({ provider: "opencode", value: "ses_test" }, async () => {
+    await als.run({ provider: "opencode", value: openCodeSessionIdFor("user-agent-test") }, async () => {
       await patchFetch(
         keptFetch,
         als,
@@ -538,10 +563,10 @@ describe("patchFetch", () => {
       });
     });
     expect(headerOf(kept.init, "User-Agent")).toBe("custom-unmodified-ua");
-    expect(headerOf(kept.init, SESSION_HEADER)).toBe("ses_test");
+    expect(headerOf(kept.init, SESSION_HEADER)).toBe(openCodeSessionIdFor("user-agent-test"));
 
     const { capture: over, mockFetch: overFetch } = createCaptureFetch();
-    await als.run({ provider: "opencode", value: "ses_test" }, async () => {
+    await als.run({ provider: "opencode", value: openCodeSessionIdFor("user-agent-test") }, async () => {
       await patchFetch(
         overFetch,
         als,
@@ -562,14 +587,14 @@ describe("patchFetch", () => {
       als,
       resolveConfig({ injectOriginHeaders: false })
     );
-    await als.run({ provider: "opencode", value: "ses_test" }, async () => {
+    await als.run({ provider: "opencode", value: openCodeSessionIdFor("user-agent-test") }, async () => {
       await patched("https://opencode.ai/zen/v1/chat/completions", {
         method: "POST",
       });
     });
     expect(headerOf(capture.init, "x-opencode-client")).toBeNull();
     expect(headerOf(capture.init, "x-opencode-project")).toBeNull();
-    expect(headerOf(capture.init, SESSION_HEADER)).toBe("ses_test");
+    expect(headerOf(capture.init, SESSION_HEADER)).toBe(openCodeSessionIdFor("user-agent-test"));
   });
 
   it("injects x-opencode-parent-session-id when parent session is present", async () => {
@@ -679,7 +704,7 @@ describe("patchFetch", () => {
       als,
       resolveConfig({ injectCoreTools: false })
     );
-    await als.run({ provider: "opencode", value: "ses_test" }, async () => {
+    await als.run({ provider: "opencode", value: openCodeSessionIdFor("user-agent-test") }, async () => {
       await patched("https://opencode.ai/zen/v1/responses", {
         body: JSON.stringify({
           input: [{ content: "hi", role: "user" }],

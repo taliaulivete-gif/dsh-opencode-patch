@@ -152,11 +152,15 @@ const hash = createHash("sha256").update(String(sessionId)).digest();
  *
  * @param id - a full session id, with or without the `ses_` prefix.
  */
-export const hasPlausibleCounter = (id: string): boolean => {
+export const counterFor = (id: string): number | undefined => {
   const hex = id.startsWith("ses_") ? id.slice(4, 16) : id.slice(0, 12);
-  if (!/^[0-9a-f]{12}$/iu.test(hex)) return false;
-  return LOW_TWELVE_ALL_ONES - Number.parseInt(hex.slice(9, 12), 16) <=
-    COUNTER_MAX;
+  if (!/^[0-9a-f]{12}$/iu.test(hex)) return undefined;
+  return LOW_TWELVE_ALL_ONES - Number.parseInt(hex.slice(9, 12), 16);
+};
+
+export const hasPlausibleCounter = (id: string): boolean => {
+  const counter = counterFor(id);
+  return counter !== undefined && counter <= COUNTER_MAX;
 };
 
 /**

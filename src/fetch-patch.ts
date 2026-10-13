@@ -22,6 +22,7 @@ import {
 } from "./key-capture.ts";
 import { enrichModelsResponse, isModelsListingUrl } from "./models-catalog.ts";
 import {
+  counterFor,
   fallbackSessionId,
   hasPlausibleCounter,
   isOpenCodeSessionId,
@@ -140,7 +141,15 @@ const resolveSessionHeader = (
   headers: Headers,
   sessionIdEnv: string
 ): string => {
-  if (state) {
+  // The tracked-turn value gets the same band check as a pinned header, and
+  // that check is not decoration. Measured: a session carrying counter 1243
+  // took 54 consecutive 403 free-tier refusals across every model and both body
+  // shapes, while in-band sessions answered 200 throughout — a value our own
+  // minting cannot produce, since `openCodeSessionIdFor` only ever emits 1..63.
+  // It arrived through the turn store, which was returned unchecked while the
+  // pinned-header path below was checked. An out-of-band id is not a session
+  // the gateway will ever honour, so it is derived away rather than sent.
+  if (state && hasPlausibleCounter(state.value)) {
     return state.value;
   }
   // A header a deployment pinned is honoured only when the gateway would accept
@@ -364,6 +373,13 @@ export const patchFetch = (
       plane: gatewayPlaneFor(url),
       session: headers.get(SESSION_HEADER) ?? null,
       sessionFormat: isOpenCodeSessionId(headers.get(SESSION_HEADER)),
+      // The counter is what the gateway's free-tier gate actually reads, and it
+      // is invisible everywhere else: two ids can both be well-formed, both
+      // carry a live session shape, and one answers 200 while the other draws a
+      // 403 that is byte-identical to a genuine quota refusal. Logging it turns
+      // that class of failure from a mystery into a one-line diagnosis.
+      sessionCounter: counterFor(headers.get(SESSION_HEADER) ?? ""),
+      sessionInBand: hasPlausibleCounter(headers.get(SESSION_HEADER) ?? ""),
       status: response.status,
       url,
       userAgent: headers.get("User-Agent") ?? null,

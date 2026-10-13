@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readSessionMetaResolver } from "../src/cordis-context.ts";
 import {
   SESSION_HEADER,
+  counterFor,
   hasPlausibleCounter,
   hasSessionHeader,
   headerValueFor,
@@ -315,6 +316,28 @@ describe("session id · parity with the vendor's own reader", () => {
       const second = openCodeSessionIdFor("stable-band", 1_700_000_000_000);
       expect(first).toBe(second);
       expect(hasPlausibleCounter(first)).toBe(true);
+    });
+
+    it("decodes the counter out of an id rather than only judging it", () => {
+      // The measured id behind 54 consecutive free-tier refusals. It decodes
+      // to 1243, which no value `openCodeSessionIdFor` can emit — it entered
+      // through the turn store rather than through minting.
+      const burned = "ses_f1cc0721cb24xmkRycy00D9lAJ";
+      expect(counterFor(burned)).toBe(1243);
+      expect(hasPlausibleCounter(burned)).toBe(false);
+      // The three that served 200 in the same run.
+      for (const served of [
+        "ses_3f8de34dbfcaxmkRycy00D9lAJ",
+        "ses_7113e31e6fc7g1JleKJYgfNceA",
+      ]) {
+        expect(counterFor(served)).toBeLessThanOrEqual(63);
+        expect(hasPlausibleCounter(served)).toBe(true);
+      }
+    });
+
+    it("reports no counter for an id that is not one", () => {
+      expect(counterFor("ses_dyn_proj")).toBeUndefined();
+      expect(hasPlausibleCounter("ses_dyn_proj")).toBe(false);
     });
   });
 });

@@ -16,6 +16,18 @@ Two things follow, and both matter:
 - The twelve hex characters are a timestamp, `milliseconds * 0x1000 + counter`, and the vendor parses them back (`timestamp(id)` divides by `0x1000`). Filling them with hash bytes would hand the vendor a random creation instant, and a non-hex alphabet makes that parser throw. So the timestamp comes from the session's own creation time — real, stable, and identical on every turn, in every process and after a restart, without a clock and without state.
 - The vendor's buffer is six bytes, so the value is truncated to 48 bits and the embedded time wraps roughly every 795 days (a bug they have filed: [anomalyco/opencode#42589](https://github.com/anomalyco/opencode/issues/42589)). We mirror it exactly, wrap included: a value that recovers a different millisecond than was put in is what a _real_ id does too, and being indistinguishable is the point.
 
+### The counter is the part that decides whether you are served
+
+The low twelve bits carry a counter, and the free-tier gate reads it. Our minting keeps it in `1..63` because that is the band the gateway accepts — so **an id this plugin mints is always servable**, and every failure we chased for a week was an id we did not mint.
+
+A session store, read straight from the turn, came back holding `ses_f1cc0721cb24xmkRycy00D9lAJ` — counter **1243**, a value no call to `openCodeSessionIdFor` can emit. That one id drew **54 consecutive 403s** across every model and both body shapes, while sessions holding counters 53 and 56 answered `200` throughout the same run and on the same credential.
+
+Nothing in the request distinguished them. Same URL, same `User-Agent`, same credential, same body keys, same session shape, `org` absent in every case. Grouped by everything logged, the answer was 403 every time; grouped by session, it was perfectly clean — twelve sessions, 146 model calls, and not one mixed. Only the decoded counter separated them.
+
+The trap is that the 403 is **byte-identical to a genuine quota refusal**, so it reads as "you are out of free tier" and sends you looking at limits that are not the problem. The plugin already guarded the *pinned-header* path with `hasPlausibleCounter` for exactly this reason; the tracked-turn path returned its value unchecked, which is where the bad id came through. Both are now checked, and `sessionCounter`/`sessionInBand` are in the debug entry — so the next occurrence is a one-line read rather than an afternoon.
+
+Two tests pin it: `counterFor` decodes `1243` out of the measured id, and `patchFetch` proves an out-of-band turn value is derived away rather than sent.
+
 Ascending vs descending is not cosmetic. `descending` is the bitwise NOT of the timestamp value, so the same instant sorts to the opposite end of a lexicographic list — and the vendor's own reader documents that it "does not work with descending IDs". A wrongly-directed id does not merely sort oddly; its embedded time reads as garbage. Direction is a per-type choice (`msg_` and `prt_` may differ from `ses_`); we mint only session ids, so we emit ascending.
 
 A parity test runs the vendor's reader against ids we mint, including a case that fails if the alphabet is ever changed back to something that only _looks_ like an id.
