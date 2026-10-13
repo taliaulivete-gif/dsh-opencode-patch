@@ -80,9 +80,11 @@ describe("OpenCode Model Catalog & Enrichment", () => {
     }
   });
 
-  it("retires Muse Spark 1.2 only where OpenCode CLI omits it", () => {
+  it("retires Muse Spark 1.2 only where OpenCode CLI omits it, and the models measured dead", () => {
     expect([...RETIRED_ZEN_MODEL_IDS].toSorted()).toEqual(
       [
+        "exo-free",
+        "ling-3.0-flash-fin-free",
         "muse-spark-1.2",
         "muse-spark-1.2-contributor",
         "muse-spark-1.2-contributor-free",
@@ -93,6 +95,12 @@ describe("OpenCode Model Catalog & Enrichment", () => {
     expect(isRetiredModel("zen", "muse-spark-1.2-contributor")).toBe(true);
     expect(isRetiredModel("zen", "muse-spark-1.2-contributor-free")).toBe(true);
 
+    // The second pair is retired on measurement, not on absence from a
+    // listing, and the two failure shapes differ: one is a clean `410
+    // ModelDeprecated`, the other is still routed with nothing behind it.
+    expect(isRetiredModel("zen", "exo-free")).toBe(true);
+    expect(isRetiredModel("zen", "ling-3.0-flash-fin-free")).toBe(true);
+
     const liveGoIds = new Set(getLiveGoCatalog().map((m) => m.id));
     const liveZenIds = new Set(getLiveZenCatalog().map((m) => m.id));
     // The CLI still lists this paid Go entry, so the patch must preserve it.
@@ -100,6 +108,16 @@ describe("OpenCode Model Catalog & Enrichment", () => {
     for (const id of RETIRED_ZEN_MODEL_IDS) {
       expect(liveZenIds.has(id)).toBe(false);
     }
+  });
+
+  it("keeps a free model that works even though the listing omits it", () => {
+    // `nemotron-3-ultra-free` is absent from the gateway's `/models` listing
+    // and answers `200` on `/chat/completions`. Absence from a listing is not
+    // evidence of death; retiring it on the listing alone would have removed a
+    // working model, which is the failure this case exists to prevent.
+    expect(RETIRED_ZEN_MODEL_IDS.has("nemotron-3-ultra-free")).toBe(false);
+    const liveZenIds = new Set(getLiveZenCatalog().map((m) => m.id));
+    expect(liveZenIds.has("nemotron-3-ultra-free")).toBe(true);
   });
 
   it("identifies model listing URLs accurately", () => {
@@ -160,10 +178,29 @@ describe("OpenCode Model Catalog & Enrichment", () => {
     // replacing the whole set — so these counts are the cold-start picker, and a
     // silent drop here is a model nobody can pick. Regenerate with
     // `scripts/regenerate-catalog-shim.ts` rather than editing by hand.
-    expect(OPENCODE_ZEN_CATALOG.length).toBe(84);
+    expect(OPENCODE_ZEN_CATALOG.length).toBe(82);
     const freeModels = OPENCODE_ZEN_CATALOG.filter((m) => m.is_free === true);
-    // Only the free tiers the gateway still serves.
-    expect(freeModels.length).toBe(12);
+    // Only the free tiers the gateway still serves, measured 2026-10-13. Named
+    // rather than only counted, because two of them are easy to mistake for
+    // paid entries: `big-pickle` carries `is_free` with no `-free` suffix, and
+    // `nemotron-3-ultra-free` is absent from the gateway's `/models` listing yet
+    // answers 200 — absence from a listing is not evidence of death.
+    expect(freeModels.length).toBe(10);
+    const freeIds = new Set(freeModels.map((m) => m.id));
+    for (const id of [
+      "cat-jam-free",
+      "ling-3.1-flash-free",
+      "longcat-2.5-preview-free",
+      "mimo-v2.6-flash-free",
+      "muse-spark-1.3-contributor-free",
+      "nemotron-3-ultra-free",
+      "nemotron-3.5-lightning-free",
+      "space-bunny-free",
+      "step-5-preview-free",
+      "big-pickle",
+    ]) {
+      expect(freeIds.has(id)).toBe(true);
+    }
 
     const ids = new Set(OPENCODE_ZEN_CATALOG.map((m) => m.id));
     expect(ids.has("muse-spark-1.3-contributor-free")).toBe(true);
@@ -749,7 +786,7 @@ describe("catalog · the README's routing table", () => {
   });
 
   it("holds the protocol doc's table to the same catalog", async () => {
-    // The same class of claim in a second document: "28 of 84" is a count
+    // The same class of claim in a second document: "26 of 82" is a count
     // written into prose, and it drifts exactly the way the README's did. The
     // numbers are parsed rather than trusted, and the total has to match too.
     const text = await readFile(

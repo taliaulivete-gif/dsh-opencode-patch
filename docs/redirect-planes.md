@@ -21,13 +21,13 @@ A **shape** is one wire protocol, named by the SDK a model declares in the catal
 
 | SDK in the catalog  | Protocol                | Zen |    Go |
 | :------------------ | :---------------------- | --: | ----: |
-| _(none)_            | `openai-completions`    |  28 |    19 |
+| _(none)_            | `openai-completions`    |  26 |    19 |
 | `@ai-sdk/openai`    | `openai-responses`      |  30 | **6** |
 | `@ai-sdk/anthropic` | `anthropic-messages`    |  18 | **6** |
 | `@ai-sdk/mistral`   | `mistral-conversations` |   1 |     — |
 | `@ai-sdk/google`    | `google-generative-ai`  |   7 |     — |
 
-**Absence is the signal, and it is a real one.** Both planes set a provider-level `npm` of `@ai-sdk/openai-compatible` in `models.dev`, and **no model declares it explicitly**: 0 of 84 on Zen, 0 of 31 on Go. A model that speaks the completions shape simply omits `provider.npm` and inherits it. So "no SDK" does not mean "unknown"; it means _the provider default_, which is the protocol the route was itself registered with.
+**Absence is the signal, and it is a real one.** Both planes set a provider-level `npm` of `@ai-sdk/openai-compatible` in `models.dev`, and **no model declares it explicitly**: 0 of 82 on Zen, 0 of 31 on Go. A model that speaks the completions shape simply omits `provider.npm` and inherits it. So "no SDK" does not mean "unknown"; it means _the provider default_, which is the protocol the route was itself registered with.
 
 That is why the servability check treats `undefined` as servable, and why `@ai-sdk/openai-compatible` is deliberately **not** in `PROTOCOL_FOR_SDK`: listing it would record the default as though it were an override. The coverage guard still covers the case where a model declares it explicitly. None do today, and if one did, the test would name it rather than drop the model.
 

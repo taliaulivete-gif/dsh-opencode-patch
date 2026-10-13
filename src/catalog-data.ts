@@ -61,8 +61,27 @@ export interface CatalogModelSpec {
  * `opencode models opencode-go` still offers the paid 1.2 contributor entry.
  * These sets encode that distinction rather than treating every 1.2 ID as
  * retired everywhere.
+ *
+ * The 1.2 retirements are independently corroborated by measurement: that model
+ * answers `ModelProtocolUnsupported` on `/chat/completions`, `/responses` and
+ * `/messages` alike, so it is not merely unlisted — it is unservable.
+ *
+ * The second pair is measured dead rather than merely unlisted, and the two
+ * failure shapes are worth keeping distinct because they read differently at
+ * the call site:
+ *
+ * - `exo-free` → `410` with `{"type":"ModelDeprecated"}`. A clean "gone".
+ * - `ling-3.0-flash-fin-free` → `400` with `Upstream request failed: Model is
+ *   unavailable.` Still routed, but with nothing behind it.
+ *
+ * Deliberately NOT retired, despite being absent from the gateway's `/models`
+ * listing: `nemotron-3-ultra-free`. Absence from a listing is not evidence of
+ * death — it answers `200` on `/chat/completions`. Retiring it on the strength
+ * of the listing alone would have removed a working model.
  */
 export const RETIRED_ZEN_MODEL_IDS: ReadonlySet<string> = new Set([
+  "exo-free",
+  "ling-3.0-flash-fin-free",
   "muse-spark-1.2",
   "muse-spark-1.2-contributor",
   "muse-spark-1.2-contributor-free",
@@ -469,19 +488,6 @@ export const OPENCODE_GO_CATALOG: readonly CatalogModelSpec[] = [
 /** Complete catalog of OpenCode Zen models (free tier & flagships) from models.dev. */
 export const OPENCODE_ZEN_CATALOG: readonly CatalogModelSpec[] = [
   {
-    context_window: 262_144,
-    cost: {
-      cache_read: 0,
-      input: 0,
-      output: 0,
-    },
-    id: "ling-3.0-flash-fin-free",
-    input_modalities: ["text"],
-    is_free: true,
-    max_output_tokens: 32_768,
-    name: "Ling 3.0 Flash Fin Free",
-  },
-  {
     context_window: 1_050_000,
     cost: {
       cache_read: 0.25,
@@ -764,18 +770,6 @@ export const OPENCODE_ZEN_CATALOG: readonly CatalogModelSpec[] = [
     input_modalities: ["text"],
     max_output_tokens: 131_072,
     name: "MiniMax-M2.5",
-  },
-  {
-    context_window: 1_048_576,
-    cost: {
-      input: 0,
-      output: 0,
-    },
-    id: "exo-free",
-    input_modalities: ["text", "image"],
-    is_free: true,
-    max_output_tokens: 131_072,
-    name: "Exo Free",
   },
   {
     context_window: 400_000,
