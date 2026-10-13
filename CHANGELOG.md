@@ -6,6 +6,76 @@ This project is an evolution of [**`nobu121/dsh-opencode-session`**](https://git
 
 ---
 
+## [1.2.0](https://github.com/viztor/dsh-opencode-patch/compare/v1.1.1...v1.2.0) (2026-10-13)
+
+
+### Features
+
+* **auth:** the Console device flows, as measured ([abd4bff](https://github.com/viztor/dsh-opencode-patch/commit/abd4bff879e9ce92b85a6f8d33951bc17fd636f1))
+* **bridge:** serve the Gemini models through the plugin's own adapter ([cbf3641](https://github.com/viztor/dsh-opencode-patch/commit/cbf3641149f08032969c4f34103f389cda8b7752))
+* **credentials:** a login is enough - its token joins the resolution chain ([4a20653](https://github.com/viztor/dsh-opencode-patch/commit/4a20653cd2f7b104721572c2aafd69b6ef76e6e7))
+* **credentials:** read the active org with a stored account ([43a6810](https://github.com/viztor/dsh-opencode-patch/commit/43a68101b2b84c3c45f852f18987171cbd72b4c7))
+* **credentials:** read the installation's own store, opt-in ([7969e09](https://github.com/viztor/dsh-opencode-patch/commit/7969e09d1dcfddd360b26783dd65eeede5558ed6))
+* **credentials:** the login token falls back to the installation's account ([cda58fe](https://github.com/viztor/dsh-opencode-patch/commit/cda58fe351048fca95a4d5f37aa80bf45a90e59a))
+* **credentials:** use the installation's own login, opt-in ([98389a4](https://github.com/viztor/dsh-opencode-patch/commit/98389a4a5ac1197da34c3476aa4dcc396abbfcfd))
+* **credentials:** wire the opt-in reader into the key-source order ([6ca6f3f](https://github.com/viztor/dsh-opencode-patch/commit/6ca6f3f87373035550c8490d93d465b0813b9871))
+* **debug:** monitor every request the interceptor touches ([7903fcb](https://github.com/viztor/dsh-opencode-patch/commit/7903fcbc525b065259a79745e63867d250933082))
+* **debug:** rewire the request monitor on the restored file ([a5ac9c1](https://github.com/viztor/dsh-opencode-patch/commit/a5ac9c17baa3fcdca8b3cb47d706f4ff4a0da780))
+* **login:** a login in use — proactive refresh, one at a time ([d41b023](https://github.com/viztor/dsh-opencode-patch/commit/d41b023bcc8fa08e801c8c5c0b69dcf760119282))
+* **login:** a stored login carries its owner, and the org rides the request ([47d1778](https://github.com/viztor/dsh-opencode-patch/commit/47d17784aaaf7c82b90e2179eadc726f8d7bc3dc))
+* **login:** mount the login remote, which has no switch to be off ([ed9067e](https://github.com/viztor/dsh-opencode-patch/commit/ed9067e5f9ddd78aaa92c7bbfffa9f4108744a88))
+* **login:** the contract a settings surface calls, and the token it never sees ([bd7ee71](https://github.com/viztor/dsh-opencode-patch/commit/bd7ee71d834442690e854c440084d25168fcdb47))
+* **login:** the host half of the flow, and the credential it keeps ([77afbfb](https://github.com/viztor/dsh-opencode-patch/commit/77afbfbeb9d9dbccb8754fc629f093b4dd6b6afd))
+* **login:** the settings card, and the last piece of the surface ([678a8f7](https://github.com/viztor/dsh-opencode-patch/commit/678a8f7bd62376bba0887803466b2e41301232c0))
+* **paths:** resolve an OpenCode installation the way OpenCode does ([b9de902](https://github.com/viztor/dsh-opencode-patch/commit/b9de902c3300f8e9c5f1a9f814cfa35962185b62))
+* **pool:** rotate on a refused credential, wherever it happened ([2fc9285](https://github.com/viztor/dsh-opencode-patch/commit/2fc928529bc852cefa24b67935d2e089e9295b05))
+* **pool:** several credentials, one active, opt-in by declaration ([84cdfbc](https://github.com/viztor/dsh-opencode-patch/commit/84cdfbc7b0024059723134d02d1efab95d89fccf))
+* **provider:** build the gateway's providers from pi's protocols ([7c531ff](https://github.com/viztor/dsh-opencode-patch/commit/7c531ffdf37df899bbb7040f42a1809c8d838d0f))
+* **tokens:** store a login as a grant, atomically ([4eb90b1](https://github.com/viztor/dsh-opencode-patch/commit/4eb90b15812324c52bd9c05beec85f255dbfac42))
+
+
+### Bug Fixes
+
+* **bridge:** give the provider the auth resolver pi actually calls ([0245292](https://github.com/viztor/dsh-opencode-patch/commit/0245292ce6529b8292b040c59db0c4cffb4b4a26))
+* **bridge:** inherit the installed catalog entry instead of enumerating fields ([f4f649e](https://github.com/viztor/dsh-opencode-patch/commit/f4f649eabadfdcfd2f7a662fdb59e45eac48f50a))
+* **card:** give the three blocks above the form room to read as three ([b3c1aaa](https://github.com/viztor/dsh-opencode-patch/commit/b3c1aaaad619f7f1372f695ec1c5c38149c01484))
+* **ci:** the build-script placeholders pnpm wrote into the workspace file ([492e4d7](https://github.com/viztor/dsh-opencode-patch/commit/492e4d7a42fda8930194d8466254636c44bd169c))
+* **credentials:** a login refreshes the org the next request carries ([045ca0d](https://github.com/viztor/dsh-opencode-patch/commit/045ca0dea1d76d1cb21960b7cbb8023ea9e29917))
+* **credentials:** capture the optional service instead of reading it off the context ([57fe770](https://github.com/viztor/dsh-opencode-patch/commit/57fe770ba77d570470db7b83feeedc6b854033f2))
+* **credentials:** one sign-in serves both planes ([4b06295](https://github.com/viztor/dsh-opencode-patch/commit/4b06295c4f38048afc5ccef9fb14e65b53e36579))
+* **credentials:** read legacy credential rows, which is all a real install has ([4a38ff3](https://github.com/viztor/dsh-opencode-patch/commit/4a38ff34aae2a548bb9ecb4f1e38e55ac1203097))
+* **credentials:** register the pool rotator through ctx.provide ([ff8aa90](https://github.com/viztor/dsh-opencode-patch/commit/ff8aa905788e4eff9e3c1cf2a43896a25002d58f))
+* **credentials:** the configured org wins over the login's ([212189b](https://github.com/viztor/dsh-opencode-patch/commit/212189b608b1aa62d3daba4c6fbf665e2b655294))
+* **credentials:** the login's token is refreshed before it is handed out ([e15de30](https://github.com/viztor/dsh-opencode-patch/commit/e15de306f399c7de05a40d59e3ad7c0e97a28330))
+* **diagnostics:** the meter's own report could throw before it printed ([ae3a264](https://github.com/viztor/dsh-opencode-patch/commit/ae3a2644fa68b5e208196e8abd7f440c0e92fe32))
+* **discovery:** a model that cannot work is not offered, for hand-listed ones too ([e315f95](https://github.com/viztor/dsh-opencode-patch/commit/e315f95741b2880f652ba897492a73cd8df5bcc6))
+* **discovery:** do not offer a free-tier model, which cannot work from here ([de6b85c](https://github.com/viztor/dsh-opencode-patch/commit/de6b85cdb540d4bff4e332502619e77e9f8475a7))
+* **discovery:** free-tier models are not offered, measured with a valid key ([14a8423](https://github.com/viztor/dsh-opencode-patch/commit/14a842310f7b879467ab8e7409930db44acaaf99))
+* **lifecycle:** an installer that throws took the rest of apply down with it ([1dca0e3](https://github.com/viztor/dsh-opencode-patch/commit/1dca0e3ff0e846d4858dc44103eee4e425689bfa))
+* **lifecycle:** publish both services through ctx.provide when ctx.plugin is absent ([d04eb18](https://github.com/viztor/dsh-opencode-patch/commit/d04eb18d593bfe91ac541f2ea384de2779232380))
+* **limits:** read the moved page instead of failing on it ([0392872](https://github.com/viztor/dsh-opencode-patch/commit/0392872174596c8113fb66cfc4f7221df2f0760b))
+* **login:** the row's absence now says why, like the meter's ([3d49c99](https://github.com/viztor/dsh-opencode-patch/commit/3d49c9904c608ccb2f380a654684339ffb615227))
+* **login:** the sign-in row never rendered because its remote was never mounted ([f7421dd](https://github.com/viztor/dsh-opencode-patch/commit/f7421dda8a75396bcdd3a611e5421a1507c70825))
+* **meter:** the meter registered twice, and the second registration threw ([04727fd](https://github.com/viztor/dsh-opencode-patch/commit/04727fd9acd451df37432f7f0f317923f4044d4f))
+* **meter:** the read had three silent exits, and the meter cannot tell them apart ([43a2e97](https://github.com/viztor/dsh-opencode-patch/commit/43a2e976b667472c1c0c3875593ddb348ee8ed32))
+* **meter:** the two catches that made a silent meter unfixable ([63f9fd4](https://github.com/viztor/dsh-opencode-patch/commit/63f9fd4734ae3455a0f4058447dc04e6c4df106c))
+* **meter:** two optional chains made a mount that never happened silent ([aacd4e6](https://github.com/viztor/dsh-opencode-patch/commit/aacd4e6a68c551efac4fbb94277aca7fae7b8881))
+* **pool:** a refused key is marked failed, and the README documents rotation ([029831b](https://github.com/viztor/dsh-opencode-patch/commit/029831bdec24eca94fb91663e9fdbe260c38fd3d))
+* **pool:** rotation must publish, or only this plugin's routes see it ([1ca906b](https://github.com/viztor/dsh-opencode-patch/commit/1ca906bbc62c437fea6e696993ffc109197acdde))
+* **provider:** mount each internal route on its protocol's base ([2598c03](https://github.com/viztor/dsh-opencode-patch/commit/2598c03477eb7bd77affe18f614b861c8d02ba1a))
+* **routes:** a hand-listed model is routed by the family its id names ([4bcf9bf](https://github.com/viztor/dsh-opencode-patch/commit/4bcf9bf84e321aecabfe22af7238bb67e9f488e6))
+* **routing:** mistral cannot be served, so it is no longer offered ([ebf32f4](https://github.com/viztor/dsh-opencode-patch/commit/ebf32f4f6adededa91b7d0a8a02bde1ff02089d4))
+* **session:** a session id the gateway rejects is replaced, not sent ([352f2a9](https://github.com/viztor/dsh-opencode-patch/commit/352f2a959c347e8bd235931e722e8da8694c9b94))
+* **store:** the credential value is JSON, so extract the token from it ([a4d0daa](https://github.com/viztor/dsh-opencode-patch/commit/a4d0daa1fde8adf567e4584e11ca54aa37ff1e55))
+* the constant my own control left behind ([d13df2f](https://github.com/viztor/dsh-opencode-patch/commit/d13df2f4cb48513b54933000631cc4102bd17005))
+* **ua:** the CLI version we claim, and a check that keeps it true ([0efbb64](https://github.com/viztor/dsh-opencode-patch/commit/0efbb64ee42b633d7c6cf407106c122fd5992426))
+
+
+### Reverts
+
+* **discovery:** free-tier models are offered again ([8473d1b](https://github.com/viztor/dsh-opencode-patch/commit/8473d1b761318b0f96fe5872a4dbddb8d9a36a08))
+* drop the context wrapper that broke the host ([5491878](https://github.com/viztor/dsh-opencode-patch/commit/54918786a5b3b1beb491c42e0fcfdb01fb9bab2c))
+
 ## [1.1.1](https://github.com/viztor/dsh-opencode-patch/compare/v1.1.0...v1.1.1) (2026-10-09)
 
 
