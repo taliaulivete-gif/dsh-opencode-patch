@@ -63,6 +63,11 @@ export const CONFIG_ONLY_FIELDS: readonly {
     reason: "diagnostic JSONL logging, not a behaviour a user tunes in the UI",
   },
   {
+    field: "debugBody",
+    reason:
+      "TEMPORARY: records the outgoing body SHAPE in debug entries, for the free-tier 403 hunt; remove with the flag",
+  },
+  {
     field: "userAgent",
     reason:
       "literal User-Agent override; the default is the canonical CLI string",

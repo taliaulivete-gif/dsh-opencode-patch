@@ -202,6 +202,7 @@ describe("Config schema", () => {
         "credentialOrg",
         "credentialPool",
         "debug",
+        "debugBody",
         "enrichModels",
         "freeModelMarker",
         "gatewayUrls",

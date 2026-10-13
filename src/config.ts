@@ -98,6 +98,7 @@ export const CONFIG_DEFAULTS = {
   credentialOrg: undefined as string | undefined,
   credentialPool: DEFAULT_CREDENTIAL_POOL,
   debug: false,
+  debugBody: false,
   enrichModels: true,
   freeModelMarker: DEFAULT_FREE_MODEL_MARKER,
   gatewayUrls: DEFAULT_GATEWAY_URLS,
@@ -119,6 +120,8 @@ export interface PluginConfig {
   credentialOrg?: string;
   credentialPool?: { enabled?: boolean; go?: string[]; zen?: string[] };
   debug?: boolean;
+  /** TEMPORARY: record the outgoing body shape in debug entries. */
+  debugBody?: boolean;
   debugFile?: string;
   enrichModels?: boolean;
   freeModelMarker?: string;
@@ -153,6 +156,8 @@ export interface ResolvedPluginConfig {
   /** The credential pool as configured. Off and empty unless declared. */
   readonly credentialPool: CredentialPoolConfig;
   debug: boolean;
+  /** TEMPORARY: record the outgoing body shape in debug entries. */
+  debugBody?: boolean;
   debugFile?: string;
   enrichModels: boolean;
   /** `*` when the core-tool fallback should run for every model. */
@@ -231,6 +236,7 @@ export const resolveConfig = (
     credentialOrg: readString(config.credentialOrg),
     credentialPool: resolveCredentialPool(config.credentialPool),
     debug: readBoolean(config.debug, CONFIG_DEFAULTS.debug),
+    debugBody: readBoolean(config.debugBody, CONFIG_DEFAULTS.debugBody),
     debugFile: readString(config.debugFile),
     enrichModels: readBoolean(
       config.enrichModels,
@@ -432,6 +438,10 @@ export const Config = z.object({
     .boolean()
     .default(CONFIG_DEFAULTS.debug)
     .description("Log injected streamed calls."),
+  debugBody: z
+    .boolean()
+    .default(CONFIG_DEFAULTS.debugBody)
+    .description("TEMPORARY: include outgoing body shape in debug entries."),
   debugFile: z
     .string()
     .description("Server-side path for JSONL stream-debug entries."),

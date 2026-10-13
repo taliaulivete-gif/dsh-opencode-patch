@@ -23,6 +23,7 @@ import {
 import { enrichModelsResponse, isModelsListingUrl } from "./models-catalog.ts";
 import {
   fallbackSessionId,
+  hasPlausibleCounter,
   isOpenCodeSessionId,
   OPENCODE_UA,
   PARENT_SESSION_ALT_HEADER,
@@ -146,8 +147,16 @@ const resolveSessionHeader = (
   // it. `ses_dsh_default` starts with `ses_` and is not a session id, and sending
   // it earns a 401 that reads like a credential fault — so a malformed one is
   // replaced by a derived id rather than passed through.
+  //
+  // Shape alone is not enough, and the gap is not theoretical: another plugin
+  // in the same composition can mint a well-formed `ses_…` whose counter sits
+  // outside the 1..63 band, and honouring it forwards an id the gateway refuses
+  // with a 403 body identical to every other free-tier refusal. Measured live:
+  // a pinned id decoding to counter 1243 was passed through here while the
+  // plugin's own minting produced only in-band values — so the header looked
+  // correct, was stable, and was worthless. Band-check it too, and derive.
   const existing = headers.get(SESSION_HEADER);
-  if (isOpenCodeSessionId(existing)) {
+  if (isOpenCodeSessionId(existing) && hasPlausibleCounter(existing)) {
     return existing;
   }
   return fallbackSessionId(sessionIdEnv);
@@ -358,6 +367,26 @@ export const patchFetch = (
       status: response.status,
       url,
       userAgent: headers.get("User-Agent") ?? null,
+      // TEMPORARY DIAGNOSTIC. Shape only — key names, byte count, and the two
+      // scalars the free tier is known to read. Never any message content,
+      // tool arguments or prompt text: those must never reach a log file.
+      //
+      // The free tier keeps answering 403 for a request that is byte-identical
+      // to one served when hand-built — same url, same path, valid session,
+      // read+bash present, stream forced, same credential. The only untested
+      // variable left is the body the host actually assembled, so this records
+      // its shape. Remove once the difference is identified.
+      ...(config.debugBody === true && typeof newInit.body === "string"
+        ? (() => {
+            const parsed = JSON.parse(newInit.body) as Record<string, unknown>;
+            return {
+              bodyBytes: newInit.body.length,
+              bodyKeys: Object.keys(parsed),
+              modelRequested: parsed.model ?? null,
+              streamRequested: parsed.stream ?? null,
+            };
+          })()
+        : {}),
     });
 
     // A refused credential or an exhausted rate limit is the one moment a pool
