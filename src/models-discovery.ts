@@ -219,32 +219,23 @@ const withoutRoute = (value: unknown, key: "id" | "provider"): unknown =>
  * Exported for its own test: it is the one place I1's second clause lives, and the
  * interesting case is a model no catalog describes.
  */
-/**
- * Whether an id names an OpenCode free-tier model.
- *
- * @param id - the model id.
- * @returns whether it is a free-tier id.
- */
-const isFreeTierModelId = (id: string): boolean => id.endsWith("-free");
-
 export const isServableModel = (id: unknown, route: string): boolean => {
   if (typeof id !== "string") {
     return true;
   }
-  // A free-tier model cannot be served from here, and this time it is measured
-  // with a valid credential rather than a malformed one: with the real API key,
-  // `space-bunny-free`, `step-5-preview-free` and `muse-spark-1.3-contributor-free`
-  // all answer `403 FreeTierError` from outside OpenCode while a paid model
-  // answers 200. `space-bunny-free` is refused too, despite being the id the
-  // gateway's own error message suggests.
+  // Free-tier ids ARE servable, and the exclusion that said otherwise was
+  // measured through this plugin's own broken request path.
   //
-  // The earlier version of this exclusion was withdrawn on the strength of a
-  // measurement that had sent a JSON document where the key belongs, which made
-  // every free model look refused for the wrong reason. The conclusion was right;
-  // the evidence was not. Both are now true at once.
-  if (isFreeTierModelId(id)) {
-    return false;
-  }
+  // `403 FreeTierError` is byte-identical across three unrelated causes: a
+  // session id whose twelve hex characters were not the vendor's inverted
+  // timestamp, a body without `stream: true`, and a body without the `read` and
+  // `bash` schemas. A probe that carries a valid credential but a malformed id
+  // is therefore not measuring the credential, and the earlier withdrawal of
+  // this very exclusion is the same mistake made once already: a measurement
+  // whose instrument was broken, reported as a fact about the world.
+  //
+  // Measured after all three were fixed, changing only the session value:
+  // `space-bunny-free` answers 200. See `docs/free-tier-gates.md`.
   const sdk = findModelSpecOn(catalogPlaneForRoute(route), id)?.provider_npm;
   if (sdk !== undefined) {
     return isServableSdk(sdk);

@@ -372,22 +372,24 @@ describe("models-discovery: I1's second clause, for a model no catalog describes
     expect(isServableModel("gemini-3.1-pro", "opencode")).toBe(true);
   });
 
-  it("does not offer a free-tier model, which cannot be served from here", () => {
-    // Measured with a VALID credential - the real key the opt-in reader extracts,
-    // not a malformed one - on the live gateway: space-bunny-free,
-    // step-5-preview-free and muse-spark-1.3-contributor-free each answer
-    // `403 FreeTierError` from outside OpenCode, while a paid model answers 200.
-    // space-bunny-free is refused too, despite being the id the gateway's own
-    // error message suggests, so the suggestion is not evidence that it works.
+  it("offers free-tier models, which are servable once the gates are met", () => {
+    // This assertion was inverted twice on the same false premise: that
+    // `403 FreeTierError` is evidence the model cannot be served.
     //
-    // This exclusion was once withdrawn for a bad reason: the measurement behind
-    // it had sent a JSON document where the key belongs. The conclusion was right
-    // and the evidence was wrong, and an earlier version of this test asserted
-    // the opposite because of it.
-    expect(isServableModel("space-bunny-free", "opencode")).toBe(false);
-    expect(isServableModel("step-5-preview-free", "opencode")).toBe(false);
+    // It is not. That body is byte-identical across three unrelated causes, all
+    // of them in the request this plugin builds — a session id whose twelve hex
+    // characters were not the vendor's inverted timestamp, a body without
+    // `stream: true`, and a body without `read` and `bash`. Any probe carrying
+    // a valid credential but a malformed id measures the instrument, not the
+    // credential, which is why this exclusion was withdrawn once and then
+    // reinstated on a repeat of the same error.
+    //
+    // Measured after all three were fixed, changing only the session value:
+    // `space-bunny-free` answers 200. See `docs/free-tier-gates.md`.
+    expect(isServableModel("space-bunny-free", "opencode")).toBe(true);
+    expect(isServableModel("step-5-preview-free", "opencode")).toBe(true);
     expect(isServableModel("muse-spark-1.3-contributor-free", "opencode")).toBe(
-      false
+      true
     );
     // The paid models are untouched.
     expect(isServableModel("deepseek-v4.1-flash", "opencode")).toBe(true);
