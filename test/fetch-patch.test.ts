@@ -353,6 +353,52 @@ describe("patchFetch", () => {
     expect(hasPlausibleCounter(sent)).toBe(true);
   });
 
+  it("injects the core tools when the body arrives on a Request, not in init", async () => {
+    // The free tier refuses a body without `read` and `bash` — measured on the
+    // gateway, two tools serve and one does not. The host issues inference
+    // calls this way on some paths, and because the whole injection block sat
+    // behind `init?.body`, those calls reached the gateway with no core tools
+    // and drew a 403 whose body is identical to every other free-tier refusal.
+    const als = new AsyncLocalStorage<ActiveTurnState>();
+    const { capture, mockFetch } = createCaptureFetch();
+    const patched = patchFetch(mockFetch, als, resolveConfig());
+    const session = openCodeSessionIdFor("request-bodied");
+
+    // One tool only — the shape that drew the 403 — and no `init` at all.
+    const request = new Request("https://opencode.ai/zen/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ content: "hi", role: "user" }],
+        model: "space-bunny-free",
+        stream: true,
+        tools: [DUMMY_READ_TOOL],
+      }),
+    });
+
+    await als.run({ provider: "opencode", value: session }, async () => {
+      await patched(request);
+    });
+
+    let raw = "";
+    if (capture.input instanceof Request) {
+      raw = await capture.input.clone().text();
+    } else if (typeof capture.init?.body === "string") {
+      raw = capture.init.body;
+    }
+    // Claimed first, or nothing below means anything. The headers travel in
+    // `init` on the borrowed path — a real `fetch` merges them onto the
+    // `Request`, the capture helper does not.
+    expect(headerOf(capture.init, SESSION_HEADER)).toBe(session);
+    const sent = JSON.parse(raw) as unknown;
+    expect(toolNamesOf(sent)).toEqual(
+      expect.arrayContaining(["read", "bash"])
+    );
+    // And the caller's own Request must survive being read from.
+    expect(request.bodyUsed).toBe(false);
+  });
+
   it("dynamically resolves x-opencode-project from workspace when injectProject is on, and omits when off", async () => {
     const als = new AsyncLocalStorage<ActiveTurnState>();
     const { capture: c1, mockFetch: m1 } = createCaptureFetch();

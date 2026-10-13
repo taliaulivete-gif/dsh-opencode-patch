@@ -341,26 +341,67 @@ export const patchFetch = (
     }
 
     const newInit: RequestInit = { ...init, headers };
+    let outgoingInput: RequestInfo | URL = input;
 
     // 4. Free-tier body requirements: the core-tool schemas and `stream: true`.
     // Both are gates the free tier applies to the inference body itself, and
     // both refuse with the same 403 body as every other failure, so neither
     // can be diagnosed from the outside.
-    if (init?.body !== undefined) {
-      const options = {
-        enabled: config.injectCoreTools,
-        modelMarker: config.freeModelMarker,
-      };
-      const withTools = maybeInjectCoreTools(url, init.body, headers, options);
+    //
+    // The body is borrowed from the `Request` when the caller did not put one
+    // in `init`, because that is how the host actually issues inference calls
+    // on some paths. Measured: a turn whose body arrived that way reached the
+    // gateway with no core tools at all and drew `403 FreeTierError`, while a
+    // byte-identical turn carrying `read` and `bash` was served — and because
+    // the whole block sat behind `init?.body`, the request that needed the
+    // injection most was the one that could never receive it. Cloning keeps
+    // the original body unread, so the caller's `Request` stays usable.
+    const bodyOptions = {
+      enabled: config.injectCoreTools,
+      modelMarker: config.freeModelMarker,
+    };
+    let bodyToPatch: RequestInit["body"] = init?.body;
+    let borrowedBody = false;
+    // The body as it will actually leave, wherever it ends up living. The
+    // diagnostic below has to read this rather than `newInit.body`, because on
+    // the borrowed path that is exactly the empty field that hid the fault.
+    let finalBody: string | undefined =
+      typeof bodyToPatch === "string" ? bodyToPatch : undefined;
+    if (
+      bodyToPatch === undefined &&
+      input instanceof Request &&
+      input.body !== null
+    ) {
+      bodyToPatch = await input.clone().text();
+      borrowedBody = true;
+      finalBody = bodyToPatch;
+    }
+    if (bodyToPatch !== undefined) {
+      const withTools = maybeInjectCoreTools(url, bodyToPatch, headers, bodyOptions);
       // Streaming is folded into the same pass so `content-length` is set once
       // against the final body rather than twice against two intermediates.
-      const newBody = maybeForceStreaming(url, withTools, headers, options);
-      if (newBody !== init.body) {
-        newInit.body = newBody;
+      const newBody = maybeForceStreaming(url, withTools, headers, bodyOptions);
+      if (typeof newBody === "string") {
+        finalBody = newBody;
+      }
+      if (newBody !== bodyToPatch) {
+        if (borrowedBody) {
+          // The body lived in the `Request`, so it is replaced there. Passing
+          // `init.body` as well would be ignored by the constructor and would
+          // reintroduce the unpatched body on some runtimes.
+          //
+          // The rule below cannot see through a `RequestInfo` union: the method
+          // comes from `input`, and this branch is only reached once `input` was
+          // found to carry a body, which rules out GET and HEAD.
+          // eslint-disable-next-line unicorn/no-invalid-fetch-options
+          outgoingInput = new Request(input, { body: newBody });
+        } else {
+          newInit.body = newBody;
+        }
       }
     }
 
-    const response = await original.call(this, input, newInit);
+    const response = await original.call(this, outgoingInput, newInit);
 
     // One line per request the interceptor touched, so a run that misbehaves can
     // be read back instead of guessed at. Presence, never values: whether a
@@ -383,23 +424,44 @@ export const patchFetch = (
       status: response.status,
       url,
       userAgent: headers.get("User-Agent") ?? null,
-      // TEMPORARY DIAGNOSTIC. Shape only — key names, byte count, and the two
+      // Shape only — key names, byte count, the tool *names*, and the two
       // scalars the free tier is known to read. Never any message content,
       // tool arguments or prompt text: those must never reach a log file.
       //
-      // The free tier keeps answering 403 for a request that is byte-identical
-      // to one served when hand-built — same url, same path, valid session,
-      // read+bash present, stream forced, same credential. The only untested
-      // variable left is the body the host actually assembled, so this records
-      // its shape. Remove once the difference is identified.
-      ...(config.debugBody === true && typeof newInit.body === "string"
+      // The tool names are here because that turned out to be the whole gate:
+      // the free tier refuses a body without `read` and `bash`, and the
+      // request that lacked them was the one whose body was invisible here.
+      ...(config.debugBody === true && finalBody !== undefined
         ? (() => {
-            const parsed = JSON.parse(newInit.body) as Record<string, unknown>;
+            const parsed = JSON.parse(finalBody) as Record<string, unknown>;
+            const rawTools: unknown = parsed.tools;
             return {
-              bodyBytes: newInit.body.length,
+              bodyBytes: finalBody.length,
               bodyKeys: Object.keys(parsed),
               modelRequested: parsed.model ?? null,
               streamRequested: parsed.stream ?? null,
+              bodySource: borrowedBody ? "request" : "init",
+              toolNames: Array.isArray(rawTools)
+                ? rawTools.map((tool) => {
+                    if (typeof tool === "string") {
+                      return tool;
+                    }
+                    if (typeof tool === "object" && tool !== null) {
+                      const record = tool as Record<string, unknown>;
+                      const { function: fn, name } = record;
+                      if (typeof fn === "object" && fn !== null) {
+                        const { name: nested } = fn as Record<string, unknown>;
+                        if (typeof nested === "string") {
+                          return nested;
+                        }
+                      }
+                      if (typeof name === "string") {
+                        return name;
+                      }
+                    }
+                    return "?";
+                  })
+                : null,
             };
           })()
         : {}),

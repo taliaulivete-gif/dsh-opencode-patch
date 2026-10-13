@@ -82,7 +82,7 @@ const urlOf = (input: RequestInfo | URL): string => {
  * identity cases read the same service twice.
  */
 const stubFetch = (respond: () => Response): Capture => {
-  const capture: Capture = { init: undefined, url: "" };
+  const capture: Capture = { init: undefined, input: undefined, url: "" };
   vi.stubGlobal(
     "fetch",
     (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {

@@ -50,8 +50,19 @@ export const toolNamesOf = (body: unknown): string[] | undefined => {
   }
   const names: string[] = [];
   for (const tool of tools) {
-    if (isRecord(tool) && typeof tool.name === "string") {
+    if (!isRecord(tool)) {
+      continue;
+    }
+    if (typeof tool.name === "string") {
       names.push(tool.name);
+      continue;
+    }
+    // The OpenAI function shape nests the name one level down, and that is the
+    // shape the free-tier core-tool injection writes on `/chat/completions`.
+    // Reading only the flat form reports an injected `bash` as absent.
+    const fn = tool.function;
+    if (isRecord(fn) && typeof fn.name === "string") {
+      names.push(fn.name);
     }
   }
   return names;
@@ -124,6 +135,13 @@ export const waitForFileContent = async (
 
 export interface Capture {
   init: RequestInit | undefined;
+  /**
+   * The first argument as it arrived. A patched body can live on the input
+   * rather than in `init` — the interceptor rebuilds the `Request` when the
+   * caller did not supply one — so a body assertion that reads only `init`
+   * sees nothing at all.
+   */
+  input: RequestInfo | URL | undefined;
   url: string;
 }
 
@@ -131,7 +149,7 @@ export const replacementFetch = (): Promise<Response> =>
   Promise.resolve(new Response("replacement"));
 
 export const createCaptureFetch = (text = "ok") => {
-  const capture: Capture = { init: undefined, url: "" };
+  const capture: Capture = { init: undefined, input: undefined, url: "" };
   const mockFetch = (
     input: RequestInfo | URL,
     init?: RequestInit
@@ -144,6 +162,7 @@ export const createCaptureFetch = (text = "ok") => {
       capture.url = input.url;
     }
     capture.init = init;
+    capture.input = input;
     return Promise.resolve(new Response(text));
   };
   return { capture, mockFetch };

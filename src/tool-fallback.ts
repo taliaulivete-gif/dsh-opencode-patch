@@ -111,7 +111,7 @@ export const DUMMY_BASH_TOOL_FUNCTION = {
   },
 } as const;
 
-const toolNames = (
+export const toolNames = (
   tools: unknown[]
 ): { hasBash: boolean; hasRead: boolean; isOpenAiFormat: boolean } => {
   let hasBash = false;
