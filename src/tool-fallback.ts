@@ -10,6 +10,7 @@
  * @module dsh-opencode-patch/tool-fallback
  */
 
+import { OPENCODE_ZEN_CATALOG } from "./catalog-data.ts";
 import { ALL_MODELS_MARKER } from "./config-values.ts";
 import { isRecord, isUnknownArray } from "./guards.ts";
 
@@ -136,7 +137,40 @@ export const toolNames = (
   return { hasBash, hasRead, isOpenAiFormat };
 };
 
-/** Whether `modelId` is in scope for the core-tool fallback. */
+/**
+ * Free tiers the bundled catalog declares, by id.
+ *
+ * Built once and lazily so the data module is not paid for by callers that
+ * never reach a free model. The shim is pure data with a type-only import, so
+ * this stays synchronous and offline — the same answer whether or not a
+ * refresh has happened.
+ */
+let bundledFreeIds: ReadonlySet<string> | undefined;
+
+const bundledFreeModelIds = (): ReadonlySet<string> => {
+  bundledFreeIds ??= new Set(
+    OPENCODE_ZEN_CATALOG.filter((model) => model.is_free === true).map(
+      (model) => model.id
+    )
+  );
+  return bundledFreeIds;
+};
+
+/**
+ * Whether `modelId` is in scope for the core-tool fallback.
+ *
+ * Two ways in, because a name is a hint and the catalog is the fact. The
+ * marker still matches on a substring, because a deployment can name a scope
+ * the catalog knows nothing about. But a model the catalog records as free is
+ * in scope **whether or not its id looks free**, which is the half that was
+ * missing: `big-pickle` carries `is_free` with no `-free` anywhere in its name,
+ * so a substring test left it out, and a free model that arrives without
+ * `read` and `bash` is refused at the gateway with a 403 that reads as an
+ * exhausted quota. The id is not the fact; the catalog is.
+ *
+ * An empty marker still means "nothing", because that is a deployment saying
+ * so explicitly, and honouring a decision is the whole point of a setting.
+ */
 export const isCoreToolModel = (modelId: string, marker: string): boolean => {
   if (marker === ALL_MODELS_MARKER) {
     return true;
@@ -144,7 +178,7 @@ export const isCoreToolModel = (modelId: string, marker: string): boolean => {
   if (marker.length === 0) {
     return false;
   }
-  return modelId.includes(marker);
+  return modelId.includes(marker) || bundledFreeModelIds().has(modelId);
 };
 
 /**

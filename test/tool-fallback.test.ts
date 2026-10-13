@@ -17,7 +17,11 @@
 
 import { describe, expect, it } from "vitest";
 
-import { ALL_MODELS_MARKER, DEFAULT_FREE_MODEL_MARKER } from "../src/index.ts";
+import {
+  ALL_MODELS_MARKER,
+  DEFAULT_FREE_MODEL_MARKER,
+  OPENCODE_ZEN_CATALOG,
+} from "../src/index.ts";
 import {
   DUMMY_BASH_TOOL,
   DUMMY_BASH_TOOL_ANTHROPIC,
@@ -78,15 +82,39 @@ describe("isCoreToolModel", () => {
     expect(isCoreToolModel("", "")).toBe(false);
   });
 
-  it("matches a substring, case-sensitively, anywhere in the id", () => {
+it("matches a substring, case-sensitively, anywhere in the id", () => {
     expect(isCoreToolModel(FREE_MODEL, DEFAULT_FREE_MODEL_MARKER)).toBe(true);
     expect(isCoreToolModel("ling-3.1-flash-free", "free")).toBe(true);
     expect(isCoreToolModel("acct-preview-9", "preview")).toBe(true);
-    // A model row carries no capability flag — the id is the only signal — so
-    // the marker is a plain substring test, and it is case-sensitive because
-    // the vendor's ids are lower-case.
+    // Case-sensitivity holds for the SUBSTRING test, because the vendor's ids
+    // are lower-case. It is not how freeness is decided — see the catalog test
+    // below, which is the one that carries the weight.
     expect(isCoreToolModel("MUSE-SPARK-CONTRIBUTOR-FREE", "free")).toBe(false);
-    expect(isCoreToolModel(FREE_MODEL, "preview")).toBe(false);
+    expect(isCoreToolModel("gpt-5.1", DEFAULT_FREE_MODEL_MARKER)).toBe(false);
+    expect(isCoreToolModel("gpt-5.1", "preview")).toBe(false);
+  });
+
+  it("takes freeness from the catalog rather than from the shape of the id", () => {
+    // The belief this replaces is written in the comment these lines used to
+    // carry: "a model row carries no capability flag — the id is the only
+    // signal". The row does carry one: `is_free`. Reading it is what keeps a
+    // free model whose name does not look free from being left without the
+    // core tools, which the gateway refuses with a 403 that reads as an
+    // exhausted quota rather than a missing schema.
+    expect(isCoreToolModel("big-pickle", DEFAULT_FREE_MODEL_MARKER)).toBe(true);
+    // Every free tier in the bundled catalog, whatever its name looks like.
+    for (const model of OPENCODE_ZEN_CATALOG) {
+      if (model.is_free !== true) {
+        continue;
+      }
+      expect(
+        isCoreToolModel(model.id, DEFAULT_FREE_MODEL_MARKER),
+        `${model.id} is free but is out of scope`
+      ).toBe(true);
+    }
+  });
+
+  it("keeps a paid model out of scope even when the marker matches nothing", () => {
     expect(isCoreToolModel("gpt-5.1", DEFAULT_FREE_MODEL_MARKER)).toBe(false);
   });
 });
@@ -510,7 +538,7 @@ describe("maybeInjectCoreTools: marker scoping", () => {
 
   it("injects only for the models carrying a custom marker", () => {
     const hit = JSON.stringify({ input: "hi", model: "acct-preview-9" });
-    const miss = JSON.stringify({ input: "hi", model: FREE_MODEL });
+    const miss = JSON.stringify({ input: "hi", model: "gpt-5.1" });
 
     // A relabelled free tier still has to be injectable: the marker is
     // user-configured precisely because the vendor renames ids.
@@ -532,6 +560,24 @@ describe("maybeInjectCoreTools: marker scoping", () => {
         options("preview")
       )
     ).toBe(miss);
+  });
+
+  it("still injects for a catalog free tier the custom marker does not name", () => {
+    // A custom marker SCOPES which other models get the fallback; it does not
+    // waive the requirement for models the catalog records as free. Leaving
+    // them out is not a narrower policy, it is a broken model: the gateway
+    // refuses a free-tier body without `read` and `bash` either way.
+    const body = JSON.stringify({ input: "hi", model: "big-pickle" });
+    const injected = maybeInjectCoreTools(
+      RESPONSES_URL,
+      body,
+      new Headers(),
+      options("preview")
+    );
+    expect(toolNamesOf(parseJsonBody(bodyText(injected)))).toEqual([
+      "read",
+      "bash",
+    ]);
   });
 });
 

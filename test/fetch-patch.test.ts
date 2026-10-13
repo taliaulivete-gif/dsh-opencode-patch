@@ -463,10 +463,22 @@ describe("patchFetch", () => {
       freeModelMarker: "preview",
     });
     expect(toolNamesOf(parseJsonBody(customHit))).toEqual(["read", "bash"]);
-    const customMiss = await runWith("muse-spark-1.3-contributor-free", {
+    const customMiss = await runWith("gpt-5.1", {
       freeModelMarker: "preview",
     });
     expect(toolNamesOf(parseJsonBody(customMiss))).toBeUndefined();
+
+    // A custom marker scopes which models get the fallback; it does not waive
+    // it for models the catalog records as free. `big-pickle` carries no
+    // "-free" in its name, so a substring scope alone leaves it out and the
+    // gateway refuses it with a 403 that reads as an exhausted quota.
+    const freeDespiteMarker = await runWith("big-pickle", {
+      freeModelMarker: "preview",
+    });
+    expect(toolNamesOf(parseJsonBody(freeDespiteMarker))).toEqual([
+      "read",
+      "bash",
+    ]);
 
     // `*` applies to every model on the path.
     const allModels = await runWith("gpt-5-paid", { freeModelMarker: "*" });
